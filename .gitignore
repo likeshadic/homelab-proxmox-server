@@ -1,0 +1,33 @@
+# Terraform state files - never commit these
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+
+# Terraform variable files - contain secrets
+*.tfvars
+!*.tfvars.example   # Keep example files for documentation
+
+# Terraform working directory
+.terraform/
+.terraform.lock.hcl
+
+# Crash log files
+crash.log
+crash.*.log
+
+# SSH keys - never commit these
+*.pem
+*.key
+id_rsa
+id_ed25519
+*.pub
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
