@@ -1,21 +1,22 @@
 # 🧱 Homelab Infrastructure Documentation
 
-**Platform:** Proxmox VE + Docker + Portainer  
+**Platform:** Proxmox VE + Docker + Portainer + Terraform  
 **Status:** Production / Active  
-**Last Updated:** January 2026
+**Last Updated:** February 2026
 
 ---
 
 ## 📌 Overview
 
-This repository documents my personal homelab environment built on **Proxmox VE** with a **Docker VM managed via Portainer**. This setup runs media services, monitoring infrastructure, and various utility containers.
+This repository documents my personal homelab environment built on **Proxmox VE** with a **Docker VM managed via Portainer**. Infrastructure is provisioned using **Terraform (Infrastructure-as-Code)** with the `bpg/proxmox` provider. The setup runs media services, monitoring infrastructure, CI/CD tooling, and various utility containers.
 
 ### Goals
 - Hands-on experience with virtualization and containerization
-- Infrastructure-as-Code practice
+- Infrastructure-as-Code practice with Terraform
+- CI/CD pipeline development with Gitea
 - Monitoring and observability
 - Media server automation
-- Resume-ready DevOps/SRE skill development
+- Resume-ready DevOps/Cloud Engineer skill development
 
 ---
 
@@ -24,28 +25,33 @@ This repository documents my personal homelab environment built on **Proxmox VE*
 ### Physical Host
 - **CPU:** Intel Core i5-6600K
 - **Motherboard:** MSI H110I Pro
-- **RAM:** 32GB
+- **RAM:** 32GB DDR4
 - **Storage:**
-  - **OS/VMs:** 1TB SSD (Proxmox system + VM storage)
-  - **Backups:** 2TB WD Red HDD
-  - **Media/Files:** 4TB Seagate IronWolf HDD
+  - **OS/VMs:** 1TB SSD (Proxmox system + VM storage) - `local-lvm`
+  - **Backups:** 2TB WD Red NAS HDD - ZFS
+  - **Media/Files:** 4TB Seagate IronWolf NAS HDD - ZFS
 
 ### Hypervisor
-- **Platform:** Proxmox VE
+- **Platform:** Proxmox VE 9.1
+- **Hostname:** prometheus
 - **Network Bridge:** vmbr0
-- **Management Interface:** https://<proxmox-ip>:8006
+- **Management Interface:** https://\<proxmox-ip\>:8006
 
 ---
 
 ## 🧩 Virtual Machines
 
-### Docker Host VM (Primary)
-- **OS:** Ubuntu/Debian-based Linux
-- **Resources:**
-  - **CPU:** 4 cores
-  - **RAM:** 16GB
-  - **Disk:** 120GB (on 1TB SSD)
-- **Purpose:** Container runtime host for all services
+All VMs provisioned via Terraform except the original Docker Host.
+
+| VM | IP | CPU | RAM | Disk | Purpose | Managed By |
+|---|---|---|---|---|---|---|
+| **docker-host** | 192.168.50.42 | 4 cores | 16GB | 120GB | Production containers | Manual |
+| **monitoring-01** | 192.168.50.51 | 2 cores | 3GB | 30GB | Prometheus, Grafana, Loki | Terraform |
+| **cicd-01** | 192.168.50.52 | 2 cores | 3GB | 30GB | Gitea + CI runners | Terraform |
+
+### Docker Host VM (Production)
+- **OS:** Ubuntu LTS
+- **Purpose:** Container runtime host for all production services
 - **Network:** Bridged (vmbr0)
 - **Installed Software:**
   - Docker Engine
@@ -53,11 +59,82 @@ This repository documents my personal homelab environment built on **Proxmox VE*
   - Portainer
   - Tailscale (for remote access)
 
+### monitoring-01 (Terraform-managed)
+- **OS:** Ubuntu 22.04 LTS (cloud-init)
+- **Purpose:** Dedicated monitoring stack - Prometheus, Grafana, Loki
+- **Status:** 🚧 In Progress
+
+### cicd-01 (Terraform-managed)
+- **OS:** Ubuntu 22.04 LTS (cloud-init)
+- **Purpose:** Gitea self-hosted Git + CI/CD runners
+- **Status:** 🚧 In Progress
+
+---
+
+## 🏗️ Infrastructure as Code
+
+VMs are provisioned using **Terraform** with the [`bpg/proxmox`](https://registry.terraform.io/providers/bpg/proxmox/latest) provider (fully compatible with Proxmox 9.x).
+
+### Structure
+
+```
+terraform/
+└── proxmox/
+    ├── modules/
+    │   └── vm/              # Reusable VM module
+    │       ├── main.tf
+    │       ├── variables.tf
+    │       └── outputs.tf
+    └── environments/
+        └── dev/             # Phase 1 infrastructure
+            ├── main.tf
+            ├── variables.tf
+            ├── outputs.tf
+            └── terraform.tfvars.example
+```
+
+### Prerequisites
+- Terraform >= 1.0
+- Proxmox 9.x with API user configured
+- Ubuntu 22.04 cloud-init template (VM ID 9000)
+
+### Deployment
+
+```bash
+cd terraform/proxmox/environments/dev
+cp terraform.tfvars.example terraform.tfvars
+# Edit terraform.tfvars with your values
+terraform init
+terraform plan
+terraform apply
+```
+
+### Terraform API User Setup
+
+```bash
+# Create dedicated Terraform user on Proxmox host
+pveum user add terraform@pve --password <password>
+pveum role add TerraformRole -privs "VM.Allocate VM.Clone VM.Config.CDROM \
+  VM.Config.CPU VM.Config.Cloudinit VM.Config.Disk VM.Config.HWType \
+  VM.Config.Memory VM.Config.Network VM.Config.Options VM.Audit \
+  VM.PowerMgmt VM.Migrate Datastore.AllocateSpace Datastore.Audit \
+  Pool.Allocate Sys.Audit Sys.Console Sys.Modify SDN.Use"
+pveum aclmod / --user terraform@pve --role TerraformRole
+```
+
+### Planned Phases
+
+| Phase | VMs | Status |
+|---|---|---|
+| Phase 1 | monitoring-01, cicd-01 | ✅ Deployed |
+| Phase 2 | k3s-master-01, k3s-worker-01, k3s-worker-02 | ⏳ Pending hardware upgrade |
+| Phase 3 | docker-dev-01 | ⏳ Pending hardware upgrade |
+
 ---
 
 ## 🐳 Container Services
 
-All services run as Docker containers managed through Portainer.
+All production services run as Docker containers managed through Portainer on docker-host.
 
 ### 📊 Management & Monitoring
 
@@ -67,7 +144,7 @@ All services run as Docker containers managed through Portainer.
 | **Homepage** | TBD | Unified dashboard for all services | ✅ Running |
 | **Prometheus** | 9090 | Metrics collection and storage | ✅ Running |
 | **Grafana** | 3001 | Metrics visualization and dashboards | ✅ Running |
-| **Nginx Proxy Manager (NPM)** | 80/443, 81 (admin) | Reverse proxy & SSL management | ⚠️ Planned |
+| **Nginx Proxy Manager (NPM)** | 80/443, 81 | Reverse proxy & SSL management | ⚠️ Planned |
 
 ### 🎬 Media Stack
 
@@ -79,45 +156,26 @@ All services run as Docker containers managed through Portainer.
 | **Prowlarr** | 9696 | Indexer management | ✅ Running |
 | **Transmission/qBittorrent** | TBD | Download client | TBD |
 
-> **Note:** Update specific ports and add any additional *arr services you're running
-
 ---
 
 ## 💾 Storage Configuration
 
-### Volume Mappings
-
 ```
-Proxmox Host
-├── 1TB SSD (OS & VMs)
-│   └── Docker VM (120GB virtual disk)
-│       └── /var/lib/docker (containers & volumes)
-├── 2TB WD Red (Backups)
-│   └── /mnt/backups (mounted in Docker VM)
+Proxmox Host (prometheus)
+├── 1TB SSD - local-lvm (OS & VMs)
+│   ├── docker-host (120GB)
+│   ├── monitoring-01 (30GB)
+│   ├── cicd-01 (30GB)
+│   └── ubuntu-cloud-template (VM 9000)
+├── 2TB WD Red - ZFS (Backups)
+│   └── /mnt/backups
 │       ├── Proxmox VM backups
 │       └── Docker volume backups
-└── 4TB Seagate IronWolf (Media & Files)
-    └── /mnt/media (mounted in Docker VM)
+└── 4TB Seagate IronWolf - ZFS (Media & Files)
+    └── /mnt/media
         ├── /movies
         ├── /tv
         └── /downloads
-```
-
-### Container Volume Binds
-
-```yaml
-# Example for media services
-Plex:
-  - /mnt/media/movies:/movies
-  - /mnt/media/tv:/tv
-
-Radarr:
-  - /mnt/media/movies:/movies
-  - /mnt/media/downloads:/downloads
-
-Sonarr:
-  - /mnt/media/tv:/tv
-  - /mnt/media/downloads:/downloads
 ```
 
 ---
@@ -125,16 +183,9 @@ Sonarr:
 ## 🔐 Remote Access
 
 ### Tailscale VPN
-- **Installation:** 
-  - Proxmox host
-  - Docker VM (as container)
-- **Purpose:** Secure remote access without port forwarding
-- **Access Points:**
-  - Proxmox web UI
-  - Individual container services
-  - SSH access to VM
-
-**No public port exposure** - All remote access is through Tailscale mesh VPN.
+- Installed on Proxmox host and Docker VM
+- Secure remote access without port forwarding
+- No public port exposure
 
 ---
 
@@ -146,21 +197,9 @@ Container Metrics
    Prometheus (scrape & store)
        ↓
    Grafana (query & visualize)
+       ↓
+   Loki (log aggregation) [planned on monitoring-01]
 ```
-
-### Prometheus Configuration
-- **Scrape Interval:** 15s
-- **Retention:** 15 days (default)
-- **Targets:**
-  - Node Exporter (system metrics)
-  - cAdvisor (container metrics)
-  - Service-specific exporters
-
-### Grafana Dashboards
-- System Overview (CPU, RAM, Disk, Network)
-- Container Performance
-- Docker Host Metrics
-- Plex Statistics (if configured)
 
 ---
 
@@ -168,25 +207,14 @@ Container Metrics
 
 | Service | Access Method | Address |
 |---------|---------------|---------|
-| Proxmox UI | Direct/Tailscale | https://<proxmox-ip>:8006 |
-| Docker VM SSH | Tailscale | ssh user@<vm-tailscale-name> |
-| Portainer | Tailscale | http://<vm-ip>:9000 |
-| Prometheus | Tailscale | http://<vm-ip>:9090 |
-| Grafana | Tailscale | http://<vm-ip>:3001 |
-| Plex | Tailscale/Local | http://<vm-ip>:32400/web |
-| Homepage | Tailscale/Local | http://<vm-ip>:<port> |
-
----
-
-## 📋 Docker Compose Stacks
-
-### Available Stacks
-- `/stacks/monitoring` - Prometheus, Grafana, exporters
-- `/stacks/media` - Plex, *arr services, download client
-- `/stacks/management` - Portainer, Homepage
-- `/stacks/proxy` - Nginx Proxy Manager (planned)
-
-> **TODO:** Add actual compose files to this repository
+| Proxmox UI | Direct/Tailscale | https://\<proxmox-ip\>:8006 |
+| Docker VM SSH | Tailscale | ssh user@\<vm-tailscale-name\> |
+| Portainer | Tailscale | http://\<vm-ip\>:9000 |
+| Prometheus | Tailscale | http://\<vm-ip\>:9090 |
+| Grafana | Tailscale | http://\<vm-ip\>:3001 |
+| Plex | Tailscale/Local | http://\<vm-ip\>:32400/web |
+| monitoring-01 | Local | 192.168.50.51 |
+| cicd-01 | Local | 192.168.50.52 |
 
 ---
 
@@ -202,18 +230,10 @@ Container Metrics
 - **Tool:** Duplicati / Restic (planned)
 - **Frequency:** Daily (planned)
 - **Location:** 2TB WD Red (`/mnt/backups/docker-volumes`)
-- **Included:**
-  - Portainer data
-  - *arr configuration
-  - Prometheus/Grafana configs and dashboards
-  - Plex metadata (optional - large)
 
-### Configuration Backups
-- **Location:** This GitHub repository
-- **Included:**
-  - Docker Compose files
-  - Service configurations
-  - Network/storage documentation
+### Infrastructure Backups
+- **Method:** Terraform state + this GitHub repository
+- **Recovery:** Full environment reproducible from `terraform apply`
 
 ---
 
@@ -221,35 +241,34 @@ Container Metrics
 
 ### Fresh Deployment
 1. Install Proxmox VE on bare metal
-2. Create Docker VM with specified resources
-3. Install Docker, Docker Compose, Portainer
-4. Mount storage volumes (2TB backup, 4TB media)
-5. Deploy stacks using compose files from this repo
-6. Configure Tailscale on Proxmox and VM
-7. Restore backup data if available
+2. Create Ubuntu cloud-init template (VM ID 9000)
+3. Configure Terraform API user and role
+4. Run `terraform apply` from `environments/dev`
+5. Deploy production services on docker-host via Portainer
+6. Configure Tailscale on Proxmox and Docker VM
 
 ### Service Recovery
-1. Pull latest compose files from this repo
-2. Restore volume data from 2TB backup drive
-3. Deploy stacks via Portainer or `docker compose up -d`
-4. Verify service connectivity
+1. Pull latest code from this repo
+2. Run `terraform apply` to reprovsion VMs
+3. Restore volume data from 2TB backup drive
+4. Deploy stacks via Portainer or `docker compose up -d`
 
 ---
 
-## 📚 Documentation Structure
+## 📚 Repository Structure
 
 ```
 homelab-proxmox-server/
-├── README.md (this file)
+├── README.md
+├── terraform/
+│   └── proxmox/
+│       ├── modules/vm/
+│       └── environments/dev/
 ├── stacks/
 │   ├── monitoring/
-│   │   └── docker-compose.yml
 │   ├── media/
-│   │   └── docker-compose.yml
 │   ├── management/
-│   │   └── docker-compose.yml
 │   └── proxy/
-│       └── docker-compose.yml
 ├── configs/
 │   ├── prometheus/
 │   ├── grafana/
@@ -264,31 +283,29 @@ homelab-proxmox-server/
 
 ## ⚠️ Known Issues & Limitations
 
-- **Single VM Architecture:** All services in one VM creates single point of failure
-  - *Mitigation:* Regular backups, monitoring VM health
-  - *Future:* Consider separating media and monitoring into separate VMs
-- **NPM Not Running:** Nginx Proxy Manager configured but not currently active
-  - *Reason:* Using Tailscale instead of reverse proxy
+- **Hardware constraints:** i5-6600K (4 cores/32GB) limits simultaneous VM count
+  - *Planned:* Upgrade to i7-9700K (8 cores) for K3s cluster deployment
+- **NPM Not Running:** Using Tailscale instead of reverse proxy
   - *Status:* Low priority with current Tailscale setup
-- **No Automated Backups:** Manual backup process currently
-  - *Planned:* Implement Duplicati/Restic automation
+- **No Automated Docker Backups:** Manual backup process currently
+  - *Planned:* Implement Restic automation
 
 ---
 
 ## 🎯 Future Improvements
 
 ### Short Term
-- [ ] Get NPM running (optional with Tailscale)
-- [ ] Add automated Docker volume backups (Duplicati/Restic)
-- [ ] Create separate monitoring VM for independence
-- [ ] Document all Docker Compose files in repo
-- [ ] Set up Watchtower or Diun for update notifications
+- [ ] Configure monitoring stack on monitoring-01 (Prometheus, Grafana, Loki)
+- [ ] Deploy Gitea on cicd-01
+- [ ] Build GitHub Actions workflows for automated Terraform plans
+- [ ] Add Ansible playbooks for VM configuration management
+- [ ] Get NPM running
+- [ ] Add automated Docker volume backups (Restic)
 
 ### Long Term
-- [ ] Split services across multiple VMs for resilience
-- [ ] Implement Infrastructure-as-Code (Terraform/Ansible)
-- [ ] Add more Grafana dashboards
-- [ ] Expand storage capacity
+- [ ] Deploy K3s cluster (Phase 2) after hardware upgrade
+- [ ] Add docker-dev-01 (Phase 3) after hardware upgrade
+- [ ] Expand to cloud provider (AWS/Azure) with Terraform modules
 - [ ] Set up off-site backup solution
 
 ---
@@ -296,22 +313,11 @@ homelab-proxmox-server/
 ## 📖 Additional Resources
 
 - [Proxmox VE Documentation](https://pve.proxmox.com/pve-docs/)
+- [bpg/proxmox Terraform Provider](https://registry.terraform.io/providers/bpg/proxmox/latest/docs)
 - [Docker Documentation](https://docs.docker.com/)
 - [Portainer Documentation](https://docs.portainer.io/)
 - [Tailscale Documentation](https://tailscale.com/kb/)
-- [TRaSH Guides](https://trash-guides.info/) - *arr stack setup guides
-
----
-
-## 🤝 Contributing
-
-This is a personal homelab documentation repository. Feel free to use this as a template for your own setup or suggest improvements via issues/PRs.
-
----
-
-## 📝 License
-
-This documentation is provided as-is for educational and reference purposes.
+- [TRaSH Guides](https://trash-guides.info/)
 
 ---
 
