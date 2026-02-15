@@ -1,0 +1,26 @@
+# -------------------------------------------------------
+# Proxmox Connection
+# -------------------------------------------------------
+proxmox_api_url  = "https://192.168.50.157:8006"
+proxmox_user     = "terraform@pve"
+proxmox_password = "your-terraform-user-password"
+
+# -------------------------------------------------------
+# Infrastructure Settings
+# -------------------------------------------------------
+proxmox_node = "prometheus"
+template_id  = 9000
+storage_pool = "local-lvm"
+
+# -------------------------------------------------------
+# Network Settings
+# -------------------------------------------------------
+gateway    = "192.168.50.1"
+nameserver = "192.168.50.1"
+
+# -------------------------------------------------------
+# SSH Access
+# Generate with: ssh-keygen -t ed25519 -C "homelab"
+# Get key with:  cat ~/.ssh/id_ed25519.pub
+# -------------------------------------------------------
+ssh_public_key = "ssh-ed25519 AAAAC3... your-key-here"
