@@ -1,0 +1,22 @@
+version: "3.8"
+
+services:
+  homepage:
+    image: ghcr.io/gethomepage/homepage:latest
+    container_name: homepage
+    ports:
+      - 3000:3000
+    volumes:
+      - /home/likeshadic/appdata/homepage/config:/app/config
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      PUID: 1000
+      PGID: 1000
+      TZ: America/Indiana/Indianapolis
+      HOMEPAGE_ALLOWED_HOSTS: "192.168.50.42:3000"
+    networks:
+      - proxy
+    restart: unless-stopped
+networks:
+  proxy:
+    external: true
